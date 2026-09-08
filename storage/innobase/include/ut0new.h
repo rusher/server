@@ -1017,10 +1017,6 @@ ut_delete_array(
 	ut_allocator<byte>(key).allocate( \
 		n_bytes, NULL, AUTOEVENT_IDX, false, false))
 
-#define ut_malloc_dontdump(n_bytes, key) static_cast<void*>( \
-	ut_allocator<byte>(key).allocate_large( \
-		n_bytes, NULL, true))
-
 #define ut_zalloc(n_bytes, key)		static_cast<void*>( \
 	ut_allocator<byte>(key).allocate( \
 		n_bytes, NULL, AUTOEVENT_IDX, true, false))
@@ -1066,17 +1062,6 @@ ut_delete_array(
 
 #define ut_malloc_nokey(n_bytes)	::malloc(n_bytes)
 
-static inline void *ut_malloc_dontdump(size_t n_bytes, ...)
-{
-	void *ptr = my_large_malloc(&n_bytes, MYF(0));
-
-	if (ptr) {
-		ut_dontdump(ptr, n_bytes, true);
-		os_total_large_mem_allocated += n_bytes;
-	}
-	return ptr;
-}
-
 #define ut_zalloc_nokey(n_bytes)	::calloc(1, n_bytes)
 
 #define ut_zalloc_nokey_nofatal(n_bytes)	::calloc(1, n_bytes)
@@ -1087,11 +1072,27 @@ static inline void *ut_malloc_dontdump(size_t n_bytes, ...)
 
 #endif /* UNIV_PFS_MEMORY */
 
-static inline void ut_free_dodump(void *ptr, size_t size)
+/** Allocate memory for a redo log buffer.
+
+The buffer is written through memset_aligned<4096> and, where the file
+system buffers are disabled for the log, it is written to the file
+directly.  It is aligned to at least 4096 bytes.
+
+The large page allocator is not used here so this memory is not excluded
+from core dumps.
+
+@param[in]	n_bytes	bytes to allocate
+@return the allocated memory, or NULL */
+static inline void *ut_malloc_dontdump(size_t n_bytes, ...)
 {
-	ut_dodump(ptr, size);
-	os_total_large_mem_allocated -= size;
-	my_large_free(ptr, size);
+	return aligned_malloc(n_bytes, 4096);
+}
+
+/** Free memory that was allocated by ut_malloc_dontdump().
+@param[in]	ptr	the allocated memory */
+static inline void ut_free_dodump(void *ptr, size_t)
+{
+	aligned_free(ptr);
 }
 
 #endif /* ut0new_h */
